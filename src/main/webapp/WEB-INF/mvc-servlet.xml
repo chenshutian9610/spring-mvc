@@ -14,7 +14,10 @@
     <context:component-scan base-package="tree.controller"/>
     <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver" p:prefix="/" p:suffix=".jsp"/>
     <!-- 静态资源 -->
-    <bean id="pathWithVersion" class="tree.tool.PathWithVersion" init-method="init"/>
+    <context:property-placeholder location="classpath:version.properties"/>
+    <bean id="pathWithVersion" class="tree.tool.PathWithVersion" init-method="init">
+        <constructor-arg value="${version}"/>
+    </bean>
     <mvc:resources mapping="#{pathWithVersion.path}/**" location="/resources/" cache-period="1000000"/>
     <!-- websocket -->
     <bean id="myWebSocket" class="tree.tool.MyWebSocket"/>

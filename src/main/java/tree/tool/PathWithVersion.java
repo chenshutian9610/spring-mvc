@@ -5,29 +5,22 @@ import org.springframework.web.context.ServletContextAware;
 
 import javax.servlet.ServletContext;
 import java.io.*;
-//  更改 version.properties 后需要重启 servlet 容器才能生效
 public class PathWithVersion implements ServletContextAware {
     private ServletContext context;
     private String path;
 
-    public void init() throws IOException {
-        path=context.getContextPath()+"/resources"+getVersion();
-        context.setAttribute("pathRoot",context.getContextPath()+path); //  在前端页面可以使用 ${pathRoot} 得到 path
+    public PathWithVersion(String version){
+        path="/resources_"+version;
+    }
+
+    public void init(){
+        /* 在前端页面可以使用 ${pathRoot} 得到 path，同时要注意这一句不能写在构造函数里 */
+        context.setAttribute("pathRoot",context.getContextPath()+path);
     }
 
     @Override
     public void setServletContext(ServletContext servletContext) {
         context=servletContext;
-    }
-
-    public String getVersion() throws IOException{
-        String version="";
-        File file=(new ClassPathResource("version.properties")).getFile();
-        BufferedReader reader=new BufferedReader(new FileReader(file));
-        String[] str=reader.readLine().split("=");
-        if("version".equals(str[0]))
-            version=str[1];
-        return "_"+version;
     }
 
     public String getPath() {

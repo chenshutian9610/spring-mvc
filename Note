@@ -1,0 +1,108 @@
+* DispatcherServlet 默认读取 WEB-INF/<servlet-name>-servlet.xml 进行配置，
+  它会拦截所有指定的请求，然后通过 HandlerMapping 找到 Handler 所在位置，
+  然后调用 HandlerAdapter 对 Handler 封装的统一适配器接口对 Handler 进行操作，
+  之后将 Handler 返回的结果封装成一个 ModelAndView（即使使用的是 ModelMap），
+  传送给视图解析器，将逻辑视图名解析为实际的视图名，
+  接着将模型传送给合适的视图对象进行渲染，最后返回给用户
+  * 这一切都是由 DispatcherServlet 进行调度，然后使用注册的插件进行工作
+  * 可参考 DispathcerServlet#initStrategies 和 spring-webmvc.jar#DispathcerServlet.properties
+  --------------------------------------------------------------------
+    protected void initStrategies(ApplicationContext context) {
+        this.initMultipartResolver(context);    //  默认不会配置，需要时在配置文件中配置一个 CommonsMultipartResolver，会被自动注册
+        this.initLocaleResolver(context);
+        this.initThemeResolver(context);
+        this.initHandlerMappings(context);
+        this.initHandlerAdapters(context);
+        this.initHandlerExceptionResolvers(context);
+        this.initRequestToViewNameTranslator(context);
+        this.initViewResolvers(context);
+        this.initFlashMapManager(context);
+    }
+  --------------------------------------------------------------------
+    # 省略包名，都是由 org.springframework.web.servlet.? 开头的
+    # HandlerMapping 和 HandlerAdapter 使用的最多的是 DefaultAnnotation~ 和 AnnotationMethod~，因为 Handler 以 @RequestMapping 为基础的
+    # RequestToViewName 在返回的视图名为空时从 request 中获取 url，赋予 ModelAndView
+    LocaleResolver=AcceptHeaderLocaleResolver
+    ThemeResolver=FixedThemeResolver
+    HandlerMapping=BeanNameUrlHandlerMapping,DefaultAnnotationHandlerMapping
+    HandlerAdapter=HttpRequestHandlerAdapter,SimpleControllerHandlerAdapter,AnnotationMethodHandlerAdapter
+    HandlerExceptionResolver=AnnotationMethodHandlerExceptionResolver,ResponseStatusExceptionResolver,DefaultHandlerExceptionResolver
+    RequestToViewNameTranslator=DefaultRequestToViewNameTranslator
+    ViewResolver=InternalResourceViewResolver
+    FlashMapManager=SessionFlashMapManager
+  --------------------------------------------------------------------
+
+* 注解讲解
+  * @RequestMapping     可用在类上和方法上，常用属性有 method，headers，path（path 所指定的 url 支持 Ant 风格和 {xxx} 占位符）
+  * @PathVariable       在入参上使用，和 @RequestMapping 的占位符是配套的，如 /user/{userId} --> @PathVariable("userId") String id
+  * @RequestParam       在入参上使用，用来将请求参数注入到参数中，常用属性有 value 和 required，相似的有 @RequestHeaders 和 @CookieValue
+  * @ModelAttribute     用在方法上时将返回值保存到模型中，用在入参时将模型中的值注入到入参和将入参保存到模型中（分别发生在报文参数注入的前后）
+  * @SessionAttributes  在类上使用，依赖于方法上的 @ModelAttribute，使用难度高，不推荐，详见 SessionController
+  * @RequestBody        将请求的报文体注入到参数中，和 RequestEntity<> 差不多，不过后者使用精度更高（后者还能配置报文头）
+  * @ResponseBody       将返回值直接输出为一个报文体，和 ResponseEntity<> 差不多
+  * @RestController     在类上使用，相当于在类上使用 @Controller 和在类中所有方法上使用 @ResponseBody
+  * @Vaild              在入参上使用， 用于校验入参，和 BindingResult 或 Errors 一起使用
+  * @NumberFormat       用在 POJO 中，如 @NumberFormat(pattern="#,###.###")，其需要 FormattingConversionServiceFactoryBean 的支持
+  * @DateTimeFormat     如 @DateTimeFormat(pattern="yyyy-MM-dd")，使用限制同上
+
+* 入参讲解
+  * 入参是一个 Servlet 对象，如 HttpServletRequest，ServletRequest 等等，会被自动注入
+  * 入参是一个流对象，如 InputStream，OutputStream，Reader，Writer，会被自动注入（request#getReader，response#getWriter）
+  * 入参是一个 Model,ModelMap 或 Map 对象，隐含模型会自动注入其中（建议使用 ModelMap）
+  * 入参是一个 String 或 int 等基本类型，会根据名字自动注入，建议使用 String，因为如果没有对应的请求参数时，String 为 null，但 int 等会直接报错
+  * 入参是一个没有注解的 POJO 类，
+    如果隐含模型含有相应类型的数据，会先注入进入参，如果没有的话也会被实例化，
+    然后它会被当成一个容器，如果类中的属性与请求参数同名的话会被注入该请求参数的值
+    假设有两个 POJO，Customer 和 User，两者都有 name 这个属性，这时候请求参数 name 会被注入到两者中，因为两者被当成容器
+  * 如果入参是一个 POJO，并且想通过请求报文直接注入到这个对象中，注意，这时候不是把 POJO 当成一个容器，而是一个对象
+    1.使用 @RequestBody 标注入参，或将入参改为 RequestEntity<POJO> 类型，会将整个报文体当成一个对象
+      不过这样要使用 <mvc:annotation-driven/> 这个注解，因为需要一个 RequestMappingHandlerAdapter，
+      其内部含有多个 HttpMessageConverter，包括字符串，表单，字节数组和 json 的转换器，
+      当传输对象的时候会将对象转化为 json 文件嵌入到报文中，当注入参数时会将 json 转为对象
+      ps：spring 只提供一个 json 的转换器，但该类依赖于  jackson-annotation 和 jackson-core 两个包，需要引入才能实现此功能
+    2.使用 JavaBean 配套的 PropertyEditor（只能用于字符串到对象的转换，但一般来说够用了），只需要在入参上使用 @RequestParam，最简单常用
+    3.使用 Spring 提供的 Converter<S,T> 或 ConverterFactory<S,T>，前者转换两个类型，但不能转换子类，后者可以
+      需要自己配置一个 ConversionServiceFactoryBean 类，不过建议是 FormattingConversionServiceFactoryBean（前者的子类）
+      然后使用 <mvc:annotation-driven conversion-service="conversionService"/> （此注解默认提供了一个 Formatting~ ）
+
+* 模型讲解
+  每一次请求都会先产生一个隐含模型，请求结束后则清除
+  隐含模型中的数据：（condition？true：false）
+    扫描是否存在方法级别的 @ModelAttribute
+    扫描是否存在类级别的 @SessionAttribute
+    扫描是否存在入参级别的 @ModelAttribute
+    ps：入参上只能使用一种注解，如果使用 @RequestParam 则不能再使用 @ModelAttribute，
+        同理隐含模型将不会注入到该参数中，区别见 UserController
+
+* DataBinder 讲解（绑定参数的核心）
+  * 首先前端的请求会被封装成一个 ServletRequest，然后和入参一起传送到 DataBinder 中
+    然后 DataBinder 会调用注册的 ConversionService 对 ServletRequest 中的消息进行数据类型转化与格式化，即 Converter 和 Formatter
+    随后将 ServletRequest 中的消息绑定到入参上，使用 Validator 验证 ServletRequest，最终生成绑定结果 BindingResult
+    BindingResult 包括入参对象和校验结果，随后将它们绑定到相应的参数
+  * <mvc:annotation-driven/> 默认包含了一个 FormattingConversionServiceFactoryBean 和 LocalValidatorFactoryBean，
+    两者都可以自定义创建，然后通过该标记的 conversion-service 和 validator 属性注册
+    * FormattingConversionServiceFactoryBean 同时含有数据转换和数据格式化的功能
+    * LocalValidatorFactoryBean 实现了 JSR-303（数据校验）的接口，但没有实现类，需要依赖于 hibernate-validator 包，使用注解见 User
+
+* 视图解析器与视图（生成的逻辑视图名通过视图解析器导航到视图对象）
+  * InternalResourceViewResolver 将逻辑视图名导航到 InternalResourceView 和 JstlView，
+    默认是前者，只有需要使用 jstl#fmt 标签时才需要转为后者，通过 viewClass 属性
+  * 其他视图对象除 FreeMarkView 外都是类写出来的，xml，pdf，excel 等视图对象，然后使用 BeanNameViewResolver 或 Xml~ 进行导航
+    注意：Xml~ 不是用于 xml 视图，而是说它有一个 xml 配置文件，里面包含着视图对象，它的功能和 BeanName~ 差不多
+
+* WebSocket 讲解
+  * WebSocket 概念比较新，12 年开始建立一套标准，14 年建立一套 java 专用的标准（JSR-356）
+    jetty9.2+ 和 tomcat8.5+ 才完全支持 WebSocket 协议，浏览器的话只要使用最新版的一般都支持
+  * 在 Spring 中使用 WebSocket 只要继承 AbstractWebSocketHandler 就可以了，一般最多也只需要重写三个方法（onopen，onmessage，onclose）
+    然后在配置文件中使用 <websocket:handlers#websocket:mapping>，详情见 mvc-servlet.xml
+  * 拦截器的配置和 websocket 大同小异，只需要继承 HandlerInterceptor，然后在配置文件使用 <mvc:interceptors>
+
+* 浅谈 @SessionAttributes（假设有个 User 类型的参数 user，并且已经保存在模型中了）
+  * 如果使用了 @SessionAttributes("user")，则在这个控制类下的所有方法中的 User 类型的入参都要使用 @ModelAttribute 修饰该参数
+    否则在访问该方法时会陷入无限等待（只有在使用了其他含有 @ModelAttribute User user 参数的方法后才不会出现这种情况）
+  * @SessionAttributes 设置的 session 模型只在本控制器有效
+
+* <mvc:resources/>（DispatcherServlet 的映射为 / 时会处理所有请求，但是不能处理静态文件）
+  * 常用属性为 mapping 和 location，mapping 为映射地址，必须以 /** 结尾，location 为静态文件的目录地址，以 / 结尾
+  * 正式上线时需要使用 cache-period 属性设置静态文件在浏览器缓存中的存在时间（一般为一年），
+    但同时要写一个类来表示版本，不然更新了静态文件如 js，html，但在浏览器中仍然使用自己的缓存

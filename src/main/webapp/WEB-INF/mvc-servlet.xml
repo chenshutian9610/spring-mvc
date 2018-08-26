@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:websocket="http://www.springframework.org/schema/websocket"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd
+        http://www.springframework.org/schema/websocket http://www.springframework.org/schema/websocket/spring-websocket-4.0.xsd
+        http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd">
+    <!-- 基本配置 -->
+    <mvc:annotation-driven/>
+    <context:component-scan base-package="tree.controller"/>
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver" p:prefix="/" p:suffix=".jsp"/>
+    <!-- 静态资源 -->
+    <bean id="pathWithVersion" class="tree.tool.PathWithVersion" init-method="init"/>
+    <mvc:resources mapping="#{pathWithVersion.path}/**" location="/resources/" cache-period="1000000"/>
+    <!-- websocket -->
+    <bean id="myWebSocket" class="tree.tool.MyWebSocket"/>
+    <websocket:handlers>
+        <websocket:mapping handler="myWebSocket" path="/myWebSocket"/>
+    </websocket:handlers>
+    <!-- 上传文件解析器，id 必须为 multipartResolver -->
+    <bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver"
+          p:defaultEncoding="utf-8" p:maxUploadSize="10000000" p:uploadTempDir="file:/d:/temp"/>
+    <!-- 拦截器 -->
+    <mvc:interceptors>
+        <!-- 全局拦截器
+        <bean class="tree.tool.MyInterceptor"/> -->
+        <!-- 局部拦截器 -->
+        <mvc:interceptor>
+            <mvc:mapping path="/hello"/>
+            <bean class="tree.tool.MyInterceptor"/>
+        </mvc:interceptor>
+    </mvc:interceptors>
+</beans>
